@@ -1,0 +1,203 @@
+openapi: 3.1.0
+info:
+  title: otp OTP API
+  version: 1.0.0
+  description: >
+    Public API for sending and verifying one-time passwords. Authenticate every request with your
+    API key as a Bearer token. The delivery channel is chosen by your account routing; you only pass
+    the recipient. The code itself is never returned by the API.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://api.otp.com/api/v1
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: OTP
+    description: Send, verify, resend, and check one-time passwords.
+paths:
+  /otp/send:
+    post:
+      operationId: sendOtp
+      tags: [OTP]
+      summary: Send an OTP
+      description: >
+        Generate a one-time password and deliver it to the recipient. The channel is chosen by your
+        app's routing (default order + per-country overrides). Returns an `otp_id` to verify against.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+          description: Replays the prior response for the same key; a reused key with a different body is a 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendRequest' }
+      responses:
+        '201':
+          description: OTP created and delivery started.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /otp/verify:
+    post:
+      operationId: verifyOtp
+      tags: [OTP]
+      summary: Verify an OTP
+      description: 'Verify the code the user entered. `matched: true` means the code was correct.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyRequest' }
+      responses:
+        '200':
+          description: Verification result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /otp/resend:
+    post:
+      operationId: resendOtp
+      tags: [OTP]
+      summary: Resend an OTP
+      description: Resend a pending OTP, advancing to the next configured channel (e.g. SMS to WhatsApp).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResendRequest' }
+      responses:
+        '200':
+          description: Resend accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /otp/{otp_id}:
+    get:
+      operationId: getOtpStatus
+      tags: [OTP]
+      summary: Get OTP status
+      parameters:
+        - name: otp_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Current status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Your API key (`otp_live_…` for production, `otp_test_…` for sandbox).
+  schemas:
+    Status:
+      type: string
+      enum: [pending, approved, failed, expired]
+      description: OTP lifecycle status.
+    Channel:
+      type: [string, 'null']
+      enum: [sms, whatsapp, email, telegram, null]
+      description: The channel the OTP was sent on (null before a channel is chosen).
+    SendRequest:
+      type: object
+      required: [recipient]
+      properties:
+        recipient:
+          type: string
+          minLength: 1
+          description: Phone number in E.164 (e.g. +905551234567) or an email address.
+        locale:
+          type: string
+          description: Message language, e.g. "en" or "tr".
+    VerifyRequest:
+      type: object
+      required: [otp_id, code]
+      properties:
+        otp_id: { type: string, format: uuid }
+        code: { type: string, minLength: 1 }
+    ResendRequest:
+      type: object
+      required: [otp_id]
+      properties:
+        otp_id: { type: string, format: uuid }
+    OtpResponse:
+      type: object
+      required: [otp_id, status, channel, masked_recipient]
+      properties:
+        otp_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/Status' }
+        channel: { $ref: '#/components/schemas/Channel' }
+        masked_recipient: { type: string, description: 'Recipient with the middle masked, e.g. +90****33.' }
+    VerifyResponse:
+      type: object
+      required: [otp_id, status, matched]
+      properties:
+        otp_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/Status' }
+        matched: { type: boolean }
+    OtpStatusResponse:
+      type: object
+      required: [otp_id, status, masked_recipient]
+      properties:
+        otp_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/Status' }
+        masked_recipient: { type: string }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [type, message]
+          properties:
+            type: { type: string, description: 'Machine-readable error class, e.g. "ApiKeyError".' }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key (also returned for a disabled app or suspended company).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: OTP not found (also returned for another company's OTP, to avoid probing).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: No enabled channel, channel not enabled, resend not allowed, or an idempotency-key conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Resend cooldown not elapsed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Request body failed validation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

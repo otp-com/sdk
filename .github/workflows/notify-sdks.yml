@@ -1,0 +1,26 @@
+name: Notify SDKs on spec change
+
+# When the contract changes, "poke" each language SDK repo so it regenerates itself from the new
+# spec. Each sdk-* repo listens for the `spec-updated` repository_dispatch event (and also exposes a
+# manual "Update from spec" run). Requires an org secret SDK_DISPATCH_TOKEN (a PAT or GitHub App
+# token with `contents:write` + `actions:write` on the sdk-* repos).
+on:
+  push:
+    branches: [main]
+    paths: ['openapi.yaml']
+  workflow_dispatch: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: [sdk-node, sdk-php, sdk-go, sdk-python]
+    steps:
+      - name: Poke ${{ matrix.repo }}
+        env:
+          GH_TOKEN: ${{ secrets.SDK_DISPATCH_TOKEN }}
+        run: |
+          gh api "repos/otp-com/${{ matrix.repo }}/dispatches" \
+            -f event_type=spec-updated \
+            -F "client_payload[sha]=${{ github.sha }}"
