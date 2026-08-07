@@ -130,7 +130,7 @@ components:
         recipient:
           type: string
           minLength: 1
-          description: Phone number in E.164 (e.g. +905551234567) or an email address.
+          description: Phone number in E.164 (e.g. +14155552671) or an email address.
         locale:
           type: string
           description: Message language, e.g. "en" or "tr".
@@ -159,7 +159,7 @@ components:
         otp_id: { type: string, format: uuid }
         status: { $ref: '#/components/schemas/Status' }
         channel: { $ref: '#/components/schemas/Channel' }
-        masked_recipient: { type: string, description: 'Recipient with the middle masked, e.g. +90****33.' }
+        masked_recipient: { type: string, description: 'Recipient with the middle masked, e.g. +14****71.' }
         action_url:
           type: [string, 'null']
           description: >
