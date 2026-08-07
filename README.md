@@ -39,13 +39,16 @@ moment you drop a fresh spec in here and see the diff before anything is pushed.
 ```sh
 ./update-sdk.sh                     # all SDKs, generate only, no git writes
 ./update-sdk.sh sdk-node sdk-go     # only these repos
-./update-sdk.sh --commit            # also branch + commit in each repo
-./update-sdk.sh --pr                # also push and open the PR (what CI does)
+./update-sdk.sh --commit            # also commit, on whatever branch the repo is already on
 ```
 
-Needs Docker (and `gh` for `--pr`). It expects `sdk-node`, `sdk-php`, `sdk-go` and `sdk-python` next
-to this repo; set `SDK_ROOT` if they live elsewhere. `--commit` and `--pr` refuse to touch a repo
-with a dirty working tree.
+Needs Docker. It expects `sdk-node`, `sdk-php`, `sdk-go` and `sdk-python` next to this repo; set
+`SDK_ROOT` if they live elsewhere.
+
+It never creates or switches branches and never pushes: `--commit` lands the regeneration on the
+branch each repo is already on (`main` in the normal case, tag it from there), and it skips any repo
+whose working tree is dirty. Want a PR instead? Check out a branch yourself first, then run
+`--commit`.
 
 ## WhatsApp: the code comes back to the user
 

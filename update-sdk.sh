@@ -5,8 +5,7 @@
 #
 #   ./update-sdk.sh                     # regenerate all SDKs from ./openapi.yaml, no git writes
 #   ./update-sdk.sh sdk-node sdk-go     # only these repos
-#   ./update-sdk.sh --commit            # also branch + commit in each repo
-#   ./update-sdk.sh --pr                # also push and open the PR (what CI does)
+#   ./update-sdk.sh --commit            # also commit, on whatever branch the repo is already on
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,23 +15,19 @@ GENERATOR_IMAGE="${OPENAPI_GENERATOR_IMAGE:-openapitools/openapi-generator-cli}"
 SPEC="$SCRIPT_DIR/openapi.yaml"
 
 ALL_REPOS=(sdk-node sdk-php sdk-go sdk-python)
-BRANCH="chore/regenerate-from-spec"
 COMMIT_MESSAGE="chore: regenerate from latest OpenAPI spec"
-PR_BODY="Local regeneration from otp-com/sdk. Review and merge to cut a release."
 
-mode="generate" # generate | commit | pr
+mode="generate" # generate | commit
 repos=()
 
 usage() {
-  sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --commit) mode="commit" ;;
-    --pr) mode="pr" ;;
-    --branch) BRANCH="$2"; shift ;;
     -h|--help) usage 0 ;;
     -*) echo "unknown flag: $1" >&2; usage 1 ;;
     *) repos+=("$1") ;;
@@ -63,7 +58,6 @@ generator_args() {
 }
 
 command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
-[ "$mode" = "pr" ] && { command -v gh >/dev/null || { echo "gh is required for --pr" >&2; exit 1; }; }
 [ -f "$SPEC" ] || { echo "spec not found: $SPEC" >&2; exit 1; }
 echo "==> using spec $SPEC"
 
@@ -76,16 +70,12 @@ regenerate() {
   [ -d "$dir" ] || { echo "    skipped: $dir does not exist"; return 0; }
   git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 && is_git=1
 
-  if [ "$mode" != "generate" ]; then
-    [ "$is_git" = 1 ] || { echo "    skipped: $dir is not a git repo, --$mode needs one"; return 0; }
+  # Branches are the human's call: commit lands on the checked-out branch, whatever it is.
+  if [ "$mode" = "commit" ]; then
+    [ "$is_git" = 1 ] || { echo "    skipped: $dir is not a git repo, --commit needs one"; return 0; }
     if [ -n "$(git -C "$dir" status --porcelain)" ]; then
       echo "    skipped: working tree is dirty, commit or stash first"
       return 0
-    fi
-    if git -C "$dir" show-ref --verify --quiet "refs/heads/$BRANCH"; then
-      git -C "$dir" switch "$BRANCH" >/dev/null
-    else
-      git -C "$dir" switch -c "$BRANCH" >/dev/null
     fi
   fi
 
@@ -110,20 +100,10 @@ regenerate() {
 
   case "$mode" in
     generate) git -C "$dir" status --short | head -20 ;;
-    commit|pr)
+    commit)
       git -C "$dir" add -A
       git -C "$dir" commit -q -m "$COMMIT_MESSAGE"
-      echo "    committed on $BRANCH"
-      if [ "$mode" = "pr" ]; then
-        if git -C "$dir" remote get-url origin >/dev/null 2>&1; then
-          git -C "$dir" push -q -u origin "$BRANCH"
-          gh pr create --repo "otp-com/$repo" --base main --head "$BRANCH" \
-            --title "$COMMIT_MESSAGE" --body "$PR_BODY" 2>/dev/null \
-            || echo "    push done; PR already open (or gh declined), check the repo"
-        else
-          echo "    no origin remote, nothing pushed"
-        fi
-      fi ;;
+      echo "    committed on $(git -C "$dir" rev-parse --abbrev-ref HEAD) (not pushed)" ;;
   esac
 }
 
