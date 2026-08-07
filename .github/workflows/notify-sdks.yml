@@ -1,13 +1,13 @@
 name: Notify SDKs on spec change
 
-# When the contract changes, "poke" each language SDK repo so it regenerates itself from the new
-# spec. Each sdk-* repo listens for the `spec-updated` repository_dispatch event (and also exposes a
-# manual "Update from spec" run). Requires an org secret SDK_DISPATCH_TOKEN (a PAT or GitHub App
-# token with `contents:write` + `actions:write` on the sdk-* repos).
+# "Poke" each language SDK repo so it regenerates itself from the current spec. Each sdk-* repo
+# listens for the `spec-updated` repository_dispatch event (and also exposes a manual "Update from
+# spec" run). Requires an org secret SDK_DISPATCH_TOKEN (a PAT or GitHub App token with
+# `contents:write` + `actions:write` on the sdk-* repos).
+#
+# Manual only: a spec push does not fan out on its own. Run this workflow when the SDKs should
+# follow, or regenerate locally with ../update-sdk.sh.
 on:
-  push:
-    branches: [main]
-    paths: ['openapi.yaml']
   workflow_dispatch: {}
 
 jobs:

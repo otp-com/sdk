@@ -12,7 +12,7 @@ and the [MCP server](https://github.com/otp-com/mcp) are generated / kept in syn
 ```
              edit openapi.yaml
                     │
-          push to main (this repo)
+     run notify-sdks.yml by hand (this repo)
                     │
         notify-sdks.yml  ──repository_dispatch("spec-updated")──►  sdk-node
                     │                                              sdk-php
@@ -22,11 +22,30 @@ and the [MCP server](https://github.com/otp-com/mcp) are generated / kept in syn
    each SDK repo regenerates from the new spec and opens a PR
 ```
 
-- **Push a spec change** → [`notify-sdks.yml`](./.github/workflows/notify-sdks.yml) fires a
+- **Fan-out is manual.** Pushing a spec change does *not* touch the SDKs; you run
+  [`notify-sdks.yml`](./.github/workflows/notify-sdks.yml) when you want them to follow. It fires a
   `spec-updated` `repository_dispatch` at each SDK repo.
 - **Each SDK repo** listens for that event (and also has a manual **Update from spec** run), fetches
   this `openapi.yaml`, regenerates its client, and opens a PR if anything changed.
 - Nothing is force-pushed: a human reviews and merges each SDK's regeneration PR, then tags a release.
+
+## Regenerating locally
+
+[`update-sdk.sh`](./update-sdk.sh) does the same job on your machine, against the sibling `sdk-*`
+checkouts, using the same generator image and flags as each repo's `generate.yml`. It always reads
+your **working copy** of `openapi.yaml` (never the pushed one), so you can regenerate the SDKs the
+moment you drop a fresh spec in here and see the diff before anything is pushed.
+
+```sh
+./update-sdk.sh                     # all SDKs, generate only, no git writes
+./update-sdk.sh sdk-node sdk-go     # only these repos
+./update-sdk.sh --commit            # also branch + commit in each repo
+./update-sdk.sh --pr                # also push and open the PR (what CI does)
+```
+
+Needs Docker (and `gh` for `--pr`). It expects `sdk-node`, `sdk-php`, `sdk-go` and `sdk-python` next
+to this repo; set `SDK_ROOT` if they live elsewhere. `--commit` and `--pr` refuse to touch a repo
+with a dirty working tree.
 
 ## WhatsApp: the code comes back to the user
 
