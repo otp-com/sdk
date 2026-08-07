@@ -26,6 +26,9 @@ paths:
       description: >
         Generate a one-time password and deliver it to the recipient. The channel is chosen by your
         app's routing (default order + per-country overrides). Returns an `otp_id` to verify against.
+        When routing picks WhatsApp the code is not sent yet: the response carries an `action_url`
+        (a wa.me link) the user opens to receive the code over WhatsApp, and the OTP stays pending
+        until they enter it. On every channel the user enters the code and you call `/otp/verify`.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -142,6 +145,13 @@ components:
       required: [otp_id]
       properties:
         otp_id: { type: string, format: uuid }
+        channel:
+          type: [string, 'null']
+          enum: [sms, whatsapp, email, telegram, null]
+          description: >
+            Move this OTP onto a specific channel, e.g. "sms" when the recipient has no WhatsApp. The
+            channel must be enabled for your app and the recipient. Omit to advance to the next channel
+            in your routing order.
     OtpResponse:
       type: object
       required: [otp_id, status, channel, masked_recipient]
@@ -150,6 +160,14 @@ components:
         status: { $ref: '#/components/schemas/Status' }
         channel: { $ref: '#/components/schemas/Channel' }
         masked_recipient: { type: string, description: 'Recipient with the middle masked, e.g. +90****33.' }
+        action_url:
+          type: [string, 'null']
+          description: >
+            WhatsApp link the user opens to receive the code: they send us the prefilled message and we
+            reply with the code over WhatsApp. Present only when the OTP was dispatched on the whatsapp
+            channel; null otherwise. Verification is the same on every channel: the user enters the code
+            and you call `/otp/verify`.
+          example: 'https://wa.me/13845555555?text=Verify%20me%3A%20aB3xZ-9kQ2m-7pLw4-2mN8k'
     VerifyResponse:
       type: object
       required: [otp_id, status, matched]

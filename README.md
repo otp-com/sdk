@@ -28,6 +28,20 @@ and the [MCP server](https://github.com/otp-com/mcp) are generated / kept in syn
   this `openapi.yaml`, regenerates its client, and opens a PR if anything changed.
 - Nothing is force-pushed: a human reviews and merges each SDK's regeneration PR, then tags a release.
 
+## WhatsApp: the code comes back to the user
+
+Verification is identical on every channel (the user enters a code, you call `/otp/verify`); only
+delivery differs. When routing picks WhatsApp, `/otp/send` (and `/otp/resend`) returns an
+`action_url` and the code is **not** sent yet:
+
+1. Send the OTP. If `channel` is `whatsapp`, the response carries `action_url` (a `wa.me` link).
+2. Open `action_url` for the user. They send us the prefilled message from their own WhatsApp.
+3. We reply over WhatsApp with the code. The OTP stays `pending` until the user enters it.
+4. Call `/otp/verify` with the entered code, exactly as on SMS, email, or Telegram.
+
+`action_url` is `null` on every other channel. If the user has no WhatsApp, `/otp/resend` moves the
+OTP onto the next configured channel.
+
 ## Setup
 
 Add an org secret `SDK_DISPATCH_TOKEN` (a fine-grained PAT or GitHub App token with `contents:write`
