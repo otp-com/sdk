@@ -1,113 +1,219 @@
-openapi: 3.1.0
-info:
-  title: otp OTP API
-  version: 1.0.0
-  description: >
-    Public API for sending and verifying one-time passwords. Authenticate every request with your
-    API key as a Bearer token. The delivery channel is chosen by your account routing; you only pass
-    the recipient. The code itself is never returned by the API.
-  license:
-    name: MIT
-    identifier: MIT
-servers:
-  - url: https://api.otp.com/api/v1
-    description: Production
-security:
-  - bearerAuth: []
-tags:
-  - name: OTP
-    description: Send, verify, resend, and check one-time passwords.
+openapi: 3.0.0
 paths:
-  /otp/send:
+  /api/v1/otp/send:
     post:
+      description: 'Routing picks the channel from the app config. When it selects WhatsApp the code is not sent yet: the response returns action_url (a wa.me link) the user opens to receive the code over WhatsApp, and the OTP stays pending until they enter it. On all other channels the code is delivered directly and action_url is null. Either way the user enters the code and you call POST /otp/verify.'
       operationId: sendOtp
-      tags: [OTP]
-      summary: Send an OTP
-      description: >
-        Generate a one-time password and deliver it to the recipient. The channel is chosen by your
-        app's routing (default order + per-country overrides). Returns an `otp_id` to verify against.
-        When routing picks WhatsApp the code is not sent yet: the response carries an `action_url`
-        (a wa.me link) the user opens to receive the code over WhatsApp, and the OTP stays pending
-        until they enter it. On every channel the user enters the code and you call `/otp/verify`.
       parameters:
-        - name: Idempotency-Key
-          in: header
+        - name: idempotency-key
           required: false
-          schema: { type: string }
-          description: Replays the prior response for the same key; a reused key with a different body is a 409.
+          in: header
+          description: Replay the prior response for a repeated request; a reused key with a different body is a 409.
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/SendRequest' }
+            schema:
+              $ref: '#/components/schemas/SendRequest'
       responses:
         '201':
           description: OTP created and delivery started.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OtpResponse' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /otp/verify:
+              schema:
+                $ref: '#/components/schemas/OtpResponse'
+        '401':
+          description: Missing or invalid API key (also returned for a disabled app or a suspended company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: No channel can reach this recipient, or the idempotency key was reused with a different body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request body failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Routing picked WhatsApp but our inbound number is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - bearerAuth: []
+      summary: 'Start an OTP: routes a channel and dispatches the code.'
+      tags:
+        - otp
+  /api/v1/otp/verify:
     post:
       operationId: verifyOtp
-      tags: [OTP]
-      summary: Verify an OTP
-      description: 'Verify the code the user entered. `matched: true` means the code was correct.'
+      parameters: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/VerifyRequest' }
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
       responses:
         '200':
           description: Verification result.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/VerifyResponse' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /otp/resend:
+              schema:
+                $ref: '#/components/schemas/VerifyResponse'
+        '401':
+          description: Missing or invalid API key (also returned for a disabled app or a suspended company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: OTP not found (the same 404 is returned for an OTP belonging to another company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request body failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - bearerAuth: []
+      summary: Verify a code against a pending OTP.
+      tags:
+        - otp
+  /api/v1/otp/resend:
     post:
       operationId: resendOtp
-      tags: [OTP]
-      summary: Resend an OTP
-      description: Resend a pending OTP, advancing to the next configured channel (e.g. SMS to WhatsApp).
+      parameters: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ResendRequest' }
+            schema:
+              $ref: '#/components/schemas/ResendRequest'
       responses:
         '200':
-          description: Resend accepted.
+          description: Resend accepted; the OTP may now be on a different channel.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OtpResponse' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-  /otp/{otp_id}:
+              schema:
+                $ref: '#/components/schemas/OtpResponse'
+        '401':
+          description: Missing or invalid API key (also returned for a disabled app or a suspended company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: OTP not found (the same 404 is returned for an OTP belonging to another company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The OTP cannot be resent (resolved, expired, or out of attempts), or the requested channel is not enabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request body failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Resend cooldown has not elapsed; see the Retry-After header.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Routing picked WhatsApp but our inbound number is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - bearerAuth: []
+      summary: Resend a pending OTP, escalating the channel if configured.
+      tags:
+        - otp
+  /api/v1/otp/{otp_id}:
     get:
       operationId: getOtpStatus
-      tags: [OTP]
-      summary: Get OTP status
       parameters:
         - name: otp_id
-          in: path
           required: true
-          schema: { type: string, format: uuid }
+          in: path
+          schema:
+            format: uuid
+            type: string
       responses:
         '200':
-          description: Current status.
+          description: Current status of the OTP.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OtpStatusResponse' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+              schema:
+                $ref: '#/components/schemas/OtpStatusResponse'
+        '400':
+          description: otp_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key (also returned for a disabled app or a suspended company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: OTP not found (the same 404 is returned for an OTP belonging to another company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - bearerAuth: []
+      summary: Fetch the current status of an OTP.
+      tags:
+        - otp
+info:
+  title: otp OTP API
+  description: |-
+    Public API for sending and verifying one-time passwords. Authenticate every request with your API key
+    as a Bearer token. The delivery channel is chosen by your account routing; you only pass the
+    recipient. The code itself is never returned by the API.
+
+    Errors are always `{"error": {"type", "message", "details"?}}`.
+
+    When routing picks WhatsApp the code is not sent yet: the send response carries an `action_url`
+    (a wa.me link) the user opens to receive the code over WhatsApp, and the OTP stays pending until they
+    enter it. Verification is identical on every channel.
+  version: 1.0.0
+  contact: {}
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+tags:
+  - name: otp
+    description: Send, verify, resend, and check one-time passwords.
+servers:
+  - url: https://api.otp.com
+    description: Production
 components:
   securitySchemes:
     bearerAuth:
@@ -115,107 +221,150 @@ components:
       scheme: bearer
       description: Your API key (`otp_live_…` for production, `otp_test_…` for sandbox).
   schemas:
-    Status:
-      type: string
-      enum: [pending, approved, failed, expired]
-      description: OTP lifecycle status.
-    Channel:
-      type: [string, 'null']
-      enum: [sms, whatsapp, email, telegram, null]
-      description: The channel the OTP was sent on (null before a channel is chosen).
+    ErrorBody:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Machine-readable error class, e.g. "OtpNotFoundError".
+          example: OtpNotFoundError
+        message:
+          type: string
+          description: Human-readable message. Safe to log; never contains the OTP code.
+        details:
+          type: object
+          additionalProperties: true
+          description: Structured context, present on validation errors ({loc, msg, type} per field) and a few domain errors.
+      required:
+        - type
+        - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+      required:
+        - error
     SendRequest:
       type: object
-      required: [recipient]
       properties:
         recipient:
           type: string
+          description: Phone number (E.164) or email address to deliver the OTP to.
+          example: '+14155552671'
           minLength: 1
-          description: Phone number in E.164 (e.g. +14155552671) or an email address.
+          maxLength: 320
         locale:
           type: string
-          description: Message language, e.g. "en" or "tr".
-    VerifyRequest:
-      type: object
-      required: [otp_id, code]
-      properties:
-        otp_id: { type: string, format: uuid }
-        code: { type: string, minLength: 1 }
-    ResendRequest:
-      type: object
-      required: [otp_id]
-      properties:
-        otp_id: { type: string, format: uuid }
-        channel:
-          type: [string, 'null']
-          enum: [sms, whatsapp, email, telegram, null]
-          description: >
-            Move this OTP onto a specific channel, e.g. "sms" when the recipient has no WhatsApp. The
-            channel must be enabled for your app and the recipient. Omit to advance to the next channel
-            in your routing order.
+          nullable: true
+          description: BCP-47 locale for the message template; falls back to the app default.
+          example: en
+          maxLength: 10
+      required:
+        - recipient
+    Status:
+      type: string
+      enum:
+        - pending
+        - approved
+        - failed
+        - expired
+    Channel:
+      type: string
+      enum:
+        - sms
+        - whatsapp
+        - email
+        - telegram
+      description: Channel the OTP was dispatched on; null until routed.
     OtpResponse:
       type: object
-      required: [otp_id, status, channel, masked_recipient]
       properties:
-        otp_id: { type: string, format: uuid }
-        status: { $ref: '#/components/schemas/Status' }
-        channel: { $ref: '#/components/schemas/Channel' }
-        masked_recipient: { type: string, description: 'Recipient with the middle masked, e.g. +14****71.' }
+        otp_id:
+          type: string
+          format: uuid
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+        channel:
+          nullable: true
+          description: Channel the OTP was dispatched on; null until routed.
+          allOf:
+            - $ref: '#/components/schemas/Channel'
+        masked_recipient:
+          type: string
+          description: Recipient with the middle digits masked.
+          example: +14****71
         action_url:
-          type: [string, 'null']
-          description: >
-            WhatsApp link the user opens to receive the code: they send us the prefilled message and we
-            reply with the code over WhatsApp. Present only when the OTP was dispatched on the whatsapp
-            channel; null otherwise. Verification is the same on every channel: the user enters the code
-            and you call `/otp/verify`.
-          example: 'https://wa.me/13845555555?text=Verify%20me%3A%20aB3xZ-9kQ2m-7pLw4-2mN8k'
+          type: string
+          nullable: true
+          description: 'WhatsApp link the user opens to receive the code: they send us the prefilled message and we reply with the code over WhatsApp, then they enter it and you call POST /otp/verify. Present only when dispatched on the whatsapp channel; null otherwise.'
+          example: https://wa.me/13845555555?text=Verify%20me%3A%20aB3xZ-9kQ2m-7pLw4-2mN8k
+      required:
+        - otp_id
+        - status
+        - channel
+        - masked_recipient
+    VerifyRequest:
+      type: object
+      properties:
+        otp_id:
+          type: string
+          format: uuid
+          description: The OTP id returned by send/resend.
+        code:
+          type: string
+          description: The code the recipient entered.
+          example: '123456'
+          minLength: 1
+          maxLength: 16
+      required:
+        - otp_id
+        - code
     VerifyResponse:
       type: object
-      required: [otp_id, status, matched]
       properties:
-        otp_id: { type: string, format: uuid }
-        status: { $ref: '#/components/schemas/Status' }
-        matched: { type: boolean }
+        otp_id:
+          type: string
+          format: uuid
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+        matched:
+          type: boolean
+          description: Whether the submitted code matched.
+      required:
+        - otp_id
+        - status
+        - matched
+    ResendRequest:
+      type: object
+      properties:
+        otp_id:
+          type: string
+          format: uuid
+          description: The OTP id to resend.
+        channel:
+          nullable: true
+          description: Move this OTP onto a specific channel, e.g. "sms" when the recipient has no WhatsApp. The channel must be enabled for your app and the recipient. Omit to advance to the next channel in your routing order.
+          allOf:
+            - $ref: '#/components/schemas/Channel'
+      required:
+        - otp_id
     OtpStatusResponse:
       type: object
-      required: [otp_id, status, masked_recipient]
       properties:
-        otp_id: { type: string, format: uuid }
-        status: { $ref: '#/components/schemas/Status' }
-        masked_recipient: { type: string }
-    Error:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [type, message]
-          properties:
-            type: { type: string, description: 'Machine-readable error class, e.g. "ApiKeyError".' }
-            message: { type: string }
-            details: { type: object, additionalProperties: true }
-  responses:
-    Unauthorized:
-      description: Missing or invalid API key (also returned for a disabled app or suspended company).
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    NotFound:
-      description: OTP not found (also returned for another company's OTP, to avoid probing).
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    Conflict:
-      description: No enabled channel, channel not enabled, resend not allowed, or an idempotency-key conflict.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    RateLimited:
-      description: Resend cooldown not elapsed.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    ValidationError:
-      description: Request body failed validation.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+        otp_id:
+          type: string
+          format: uuid
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+        masked_recipient:
+          type: string
+          description: Recipient with the middle digits masked.
+          example: +14****71
+      required:
+        - otp_id
+        - status
+        - masked_recipient

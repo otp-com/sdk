@@ -1,9 +1,10 @@
 # otp.com API contract
 
-The **OpenAPI 3.1 spec** for the public otp.com OTP API: [`openapi.yaml`](./openapi.yaml).
+The **OpenAPI 3.0.0 spec** for the public otp.com OTP API: [`openapi.yaml`](./openapi.yaml).
 
-This file is the single source of truth for the API surface. Every language SDK and the MCP server
-are generated or kept in sync from it, so a change lands here first and reaches clients second.
+This file is the contract every language SDK and the MCP server are generated from. It is **generated
+output**, not hand-written: the API server emits it from its own controllers, and it is copied here.
+Editing it by hand is how the two drift apart, which is exactly what this arrangement replaced.
 
 | | Package | Repo |
 | --- | --- | --- |
@@ -16,7 +17,9 @@ are generated or kept in sync from it, so a change lands here first and reaches 
 ## The API in one screen
 
 Authenticate every request with your API key as a Bearer token (`otp_live_…` for production,
-`otp_test_…` for sandbox). Base URL: `https://api.otp.com/api/v1`.
+`otp_test_…` for sandbox). Base URL: `https://api.otp.com/api/v1`. In the spec that splits into the
+server (`https://api.otp.com`) and the `/api/v1` prefix on every path, which is what the generated
+SDKs take as their configuration; the URL on the wire is the same.
 
 | Endpoint | Does |
 | --- | --- |
@@ -42,24 +45,28 @@ delivery differs. When routing picks WhatsApp, `/otp/send` (and `/otp/resend`) r
 `action_url` is `null` on every other channel. If the user has no WhatsApp, `/otp/resend` moves the
 OTP onto the next configured channel.
 
-## Editing the spec
+## Updating the spec
 
-Keep `openapi.yaml` a mirror of the live API: if the backend changed, this file changes in the same
-breath. Validate before pushing:
+`openapi.yaml` is not edited here. It comes from the API server (the private `otp-backend` repo),
+which generates it from the NestJS controllers and DTOs:
 
 ```sh
-npx @redocly/cli lint openapi.yaml
+./otp openapi                       # in otp-backend: rewrites docs/contract/openapi.yaml
+cp ../otp-backend/docs/contract/openapi.yaml openapi.yaml
+npx @redocly/cli lint openapi.yaml  # optional; the generator image also has `validate`
 ```
 
-A change here is a change to every SDK. Removing or renaming a field is a breaking change for four
-published packages, so treat additive edits as routine and everything else as a release decision.
+So a wording change, a new field or a new error status is a change to a decorator over there, never a
+hand edit here. Schema names and `operationId`s are the SDK's public surface: renaming one is a
+breaking change for four published packages, so treat additive changes as routine and everything else
+as a release decision.
 
 ## Regenerating the SDKs
 
 Fan-out is **manual**. Pushing a spec change does not touch the SDKs; you decide when they follow.
 
 ```
-             edit openapi.yaml
+         copy in a fresh openapi.yaml
                     │
      run notify-sdks.yml by hand (this repo)
                     │
