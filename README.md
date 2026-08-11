@@ -77,38 +77,6 @@ Fan-out is **manual**. Pushing a spec change does not touch the SDKs; you decide
   this `openapi.yaml`, regenerates its client, and opens a PR if anything changed.
 - Nothing is force-pushed: a human reviews and merges each regeneration PR, then tags a release.
 
-### Locally
-
-[`update-sdk.sh`](./update-sdk.sh) does the same job on your machine, against the sibling `sdk-*`
-checkouts, using the same generator image and flags as each repo's `generate.yml`. It always reads
-your **working copy** of `openapi.yaml` (never the pushed one), so you can regenerate the SDKs the
-moment you drop a fresh spec in here and see the diff before anything is pushed.
-
-```sh
-./update-sdk.sh                     # all SDKs, generate only, no git writes
-./update-sdk.sh sdk-node sdk-go     # only these repos
-./update-sdk.sh --commit            # also commit, on whatever branch the repo is already on
-```
-
-Needs Docker. It expects `sdk-node`, `sdk-php`, `sdk-go` and `sdk-python` next to this repo; set
-`SDK_ROOT` if they live elsewhere.
-
-It never creates or switches branches and never pushes: `--commit` lands the regeneration on the
-branch each repo is already on (`main` in the normal case, tag it from there), and it skips any repo
-whose working tree is dirty. Want a PR instead? Check out a branch yourself first, then run
-`--commit`.
-
-### What is not generated
-
-Each SDK's `README.md` is hand-written and listed in that repo's `.openapi-generator-ignore`, so
-regeneration leaves it alone. When the contract changes in a way users can see, update those four
-READMEs too.
-
-## Setup
-
-Add an org secret `SDK_DISPATCH_TOKEN` (a fine-grained PAT or GitHub App token with `contents:write`
-and `actions:write` on the `sdk-*` repos) so this repo can dispatch to them.
-
 ## License
 
 MIT
