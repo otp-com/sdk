@@ -79,6 +79,20 @@ regenerate() {
     fi
   fi
 
+  # Delete everything the previous run generated before generating again. The generator never
+  # removes an output that fell out of the spec (removed schemas linger as orphans: the
+  # Error/ErrorError cleanup of 2026-08-13), and on a case-insensitive filesystem a case-only class
+  # rename overwrites the old file in place instead of replacing it (OtpApi.ts vs OTPApi.ts, same
+  # day). Anything still current is rewritten by the generate step right after; hand-maintained
+  # files (README + everything in .openapi-generator-ignore) are not in the manifest and survive.
+  # Must stay identical to the "Prune previous outputs" step in each repo's generate.yml.
+  if [ -f "$dir/.openapi-generator/FILES" ]; then
+    while IFS= read -r f; do
+      case "$f" in ''|/*|*..*) continue ;; esac
+      rm -f "$dir/$f"
+    done < "$dir/.openapi-generator/FILES"
+  fi
+
   # The generator reads the spec from inside the repo, exactly as CI does, then it is removed again.
   cp "$SPEC" "$dir/openapi.yaml"
   docker run --rm -v "$dir":/local "$GENERATOR_IMAGE" generate \

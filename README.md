@@ -23,7 +23,7 @@ SDKs take as their configuration; the URL on the wire is the same.
 
 | Endpoint | Does |
 | --- | --- |
-| `POST /otp/send` | Generate and deliver a code. You pass the recipient; account routing picks the channel. Returns `otp_id`. |
+| `POST /otp/send` | Generate and deliver a code. You pass the recipient (and the end user's IP as `client_ip`; requests without it share a much tighter rate limit); account routing picks the channel. Returns `otp_id`. |
 | `POST /otp/verify` | Check the code the user entered. `matched: true` means correct. |
 | `POST /otp/resend` | Resend a pending OTP, advancing to the next channel (or one you name). |
 | `GET /otp/{otp_id}` | Current status: `pending`, `approved`, `failed`, or `expired`. |
