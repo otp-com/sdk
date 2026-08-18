@@ -50,7 +50,14 @@ generator_args() {
       GEN_ARGS=(--git-user-id otp-com --git-repo-id sdk-go --additional-properties=packageName=otp,isGoSubmodule=false) ;;
     sdk-python)
       GENERATOR="python"
-      GEN_ARGS=(--additional-properties=packageName=otp_sdk,projectName=otp-sdk,packageVersion=1.0.0) ;;
+      # pyproject.toml holds the released package version and the generator no longer owns it
+      # (.openapi-generator-ignore). Feed it back in so the version stamped into setup.py and
+      # otp_sdk/__init__.py follows the release instead of drifting back to a hardcoded one.
+      local version
+      version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$SDK_ROOT/$1/pyproject.toml" | head -1)
+      [ -n "$version" ] || { echo "no version line in $SDK_ROOT/$1/pyproject.toml" >&2; return 1; }
+      GEN_ARGS=(--git-user-id otp-com --git-repo-id sdk-python \
+        --additional-properties=packageName=otp_sdk,projectName=otp-sdk,packageUrl=https://github.com/otp-com/sdk-python,packageVersion="$version") ;;
     *)
       echo "unknown SDK repo: $1 (expected one of: ${ALL_REPOS[*]})" >&2
       return 1 ;;
@@ -63,11 +70,11 @@ echo "==> using spec $SPEC"
 
 regenerate() {
   local repo="$1" dir="$SDK_ROOT/$repo" is_git=0
-  generator_args "$repo"
 
   echo
   echo "==> $repo"
   [ -d "$dir" ] || { echo "    skipped: $dir does not exist"; return 0; }
+  generator_args "$repo"
   git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 && is_git=1
 
   # Branches are the human's call: commit lands on the checked-out branch, whatever it is.
