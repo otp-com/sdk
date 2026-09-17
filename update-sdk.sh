@@ -47,7 +47,10 @@ generator_args() {
       GEN_ARGS=('--additional-properties=invokerPackage=OtpCom\Sdk,composerVendorName=otp-com,composerPackageName=sdk-php,artifactVersion=1.0.0') ;;
     sdk-go)
       GENERATOR="go"
-      GEN_ARGS=(--git-user-id otp-com --git-repo-id sdk-go --additional-properties=packageName=otp,isGoSubmodule=false) ;;
+      # enumClassPrefix: Go has no enum scoping, so constants are named after the enum value alone.
+      # Two enums sharing a value (Channel.email, RecipientType.email) would both become EMAIL and
+      # fail to compile as a redeclaration. This prefixes with the enum name instead.
+      GEN_ARGS=(--git-user-id otp-com --git-repo-id sdk-go --additional-properties=packageName=otp,isGoSubmodule=false,enumClassPrefix=true) ;;
     sdk-python)
       GENERATOR="python"
       # pyproject.toml holds the released package version and the generator no longer owns it
