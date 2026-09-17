@@ -43,7 +43,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: Routing picked WhatsApp but our inbound number is not configured.
+          description: Either routing picked WhatsApp and our inbound number is not configured, or the platform is closed for maintenance (see the Retry-After header).
           content:
             application/json:
               schema:
@@ -77,13 +77,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: OTP not found (the same 404 is returned for an OTP belonging to another company).
+          description: 'OTP not found (the same 404 is returned for an OTP belonging to another company, or to the other environment: a test key addresses only sandbox OTPs and a live key only live ones).'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: Request body failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The platform is closed for maintenance. Retry after the interval in the Retry-After header.
           content:
             application/json:
               schema:
@@ -117,7 +123,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: OTP not found (the same 404 is returned for an OTP belonging to another company).
+          description: 'OTP not found (the same 404 is returned for an OTP belonging to another company, or to the other environment: a test key addresses only sandbox OTPs and a live key only live ones).'
           content:
             application/json:
               schema:
@@ -141,7 +147,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: Routing picked WhatsApp but our inbound number is not configured.
+          description: Either routing picked WhatsApp and our inbound number is not configured, or the platform is closed for maintenance (see the Retry-After header).
           content:
             application/json:
               schema:
@@ -181,7 +187,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: OTP not found (the same 404 is returned for an OTP belonging to another company).
+          description: 'OTP not found (the same 404 is returned for an OTP belonging to another company, or to the other environment: a test key addresses only sandbox OTPs and a live key only live ones).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The platform is closed for maintenance. Retry after the interval in the Retry-After header.
           content:
             application/json:
               schema:
@@ -191,6 +203,53 @@ paths:
       summary: Fetch the current status of an OTP.
       tags:
         - OTP
+  /api/v1/verifications/exchange:
+    post:
+      description: 'Call this from YOUR backend, with a server key from your API Keys page, using the verification_token your app received from POST /client/otp/verify. It returns the recipient that was actually verified. This is the only trustworthy answer to "did this user prove they control this number": the `matched` field the device saw is a UI hint, read off a device you do not control, and an app can claim anything. Exchanging is idempotent for the same API key within the token lifetime, so a retry after a network failure returns the same result instead of losing the verification. Any other key, a second use, or an expired token gets a 404.'
+      operationId: exchangeVerification
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificationExchangeRequest'
+      responses:
+        '200':
+          description: The verification this token proves.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationExchangeResponse'
+        '401':
+          description: Missing or invalid API key (also returned for a publishable key used here, a disabled app, or a suspended company).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Verification token not found, expired, or already exchanged. The same 404 covers a token that is not yours and one already exchanged by a different key of your own, so the endpoint cannot be used to probe which tokens exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request body failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The platform is closed for maintenance. Retry after the interval in the Retry-After header.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - bearerAuth: []
+      summary: Exchange a verification token for the recipient it proves.
+      tags:
+        - Verifications
 info:
   title: otp OTP API
   description: |-
@@ -203,6 +262,11 @@ info:
     When routing picks WhatsApp the code is not sent yet: the send response carries an `action_url`
     (a wa.me link) the user opens to receive the code over WhatsApp, and the OTP stays pending until they
     enter it. Verification is identical on every channel.
+
+    If your app uses one of the mobile SDKs, the device verifies against the client API and receives a
+    `verification_token` instead of a result. Exchange that token here, with your server key
+    (`POST /verifications/exchange`), to learn which recipient was verified. What an app tells your
+    backend about its own verification is unverifiable, so the token is the whole security model.
   version: 1.0.0
   contact: {}
   license:
@@ -211,6 +275,8 @@ info:
 tags:
   - name: OTP
     description: Send, verify, resend, and check one-time passwords.
+  - name: Verifications
+    description: Exchange a token from the mobile SDKs for the recipient it proves.
 servers:
   - url: https://api.otp.com
     description: Production
@@ -351,7 +417,7 @@ components:
           description: The OTP id to resend.
         channel:
           nullable: true
-          description: Move this OTP onto a specific channel, e.g. "sms" when the recipient has no WhatsApp. The channel must be enabled for your app and the recipient. Omit to advance to the next channel in your routing order.
+          description: Move this OTP onto a specific channel, e.g. "sms" when the recipient has no WhatsApp. The channel must be enabled for your app and the recipient. Omit to advance to the next channel in your routing order, or to repeat the last one once the order is exhausted.
           allOf:
             - $ref: '#/components/schemas/Channel'
       required:
@@ -373,3 +439,48 @@ components:
         - otp_id
         - status
         - masked_recipient
+    VerificationExchangeRequest:
+      type: object
+      properties:
+        verification_token:
+          type: string
+          description: The verification_token your app received from POST /client/otp/verify.
+          example: otp_vt_3xZ9kQ2m7pLw42mN8kaB3xZ9kQ2m7pLw
+          minLength: 1
+          maxLength: 128
+      required:
+        - verification_token
+    RecipientType:
+      type: string
+      enum:
+        - phone
+        - email
+    VerificationExchangeResponse:
+      type: object
+      properties:
+        otp_id:
+          type: string
+          format: uuid
+          description: The OTP this verification belongs to.
+        recipient:
+          type: string
+          description: The recipient that was verified, in full. This is the answer the device could not be trusted to give you.
+          example: '+14155552671'
+        recipient_type:
+          allOf:
+            - $ref: '#/components/schemas/RecipientType'
+        channel:
+          nullable: true
+          description: Channel the verified code was delivered on.
+          allOf:
+            - $ref: '#/components/schemas/Channel'
+        verified_at:
+          type: string
+          format: date-time
+          description: When the end user entered the correct code.
+      required:
+        - otp_id
+        - recipient
+        - recipient_type
+        - channel
+        - verified_at
