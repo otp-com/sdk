@@ -41,6 +41,8 @@ generator_args() {
   case "$1" in
     sdk-node)
       GENERATOR="typescript-fetch"
+      # shellcheck disable=SC2054 # The commas belong to the value: openapi-generator reads
+      # --additional-properties as one comma-separated argument, so splitting on spaces breaks it.
       GEN_ARGS=(--additional-properties=npmName=@otp.com/sdk-node,npmVersion=1.0.0,supportsES6=true) ;;
     sdk-php)
       GENERATOR="php"
@@ -50,6 +52,7 @@ generator_args() {
       # enumClassPrefix: Go has no enum scoping, so constants are named after the enum value alone.
       # Two enums sharing a value (Channel.email, RecipientType.email) would both become EMAIL and
       # fail to compile as a redeclaration. This prefixes with the enum name instead.
+      # shellcheck disable=SC2054 # Same as sdk-node: one comma-separated argument, not a list.
       GEN_ARGS=(--git-user-id otp-com --git-repo-id sdk-go --additional-properties=packageName=otp,isGoSubmodule=false,enumClassPrefix=true) ;;
     sdk-python)
       GENERATOR="python"
@@ -59,6 +62,7 @@ generator_args() {
       local version
       version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$SDK_ROOT/$1/pyproject.toml" | head -1)
       [ -n "$version" ] || { echo "no version line in $SDK_ROOT/$1/pyproject.toml" >&2; return 1; }
+      # shellcheck disable=SC2054 # Same as sdk-node: one comma-separated argument, not a list.
       GEN_ARGS=(--git-user-id otp-com --git-repo-id sdk-python \
         --additional-properties=packageName=otp_sdk,projectName=otp-sdk,packageUrl=https://github.com/otp-com/sdk-python,packageVersion="$version") ;;
     *)
@@ -72,7 +76,12 @@ command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
 echo "==> using spec $SPEC"
 
 regenerate() {
-  local repo="$1" dir="$SDK_ROOT/$repo" is_git=0
+  # Three statements, not one: inside a single `local`, a later assignment expands the OUTER `repo`
+  # rather than the one being declared beside it. This worked only because the caller's loop variable
+  # happens to share the name and the value (SC2318).
+  local repo="$1"
+  local dir="$SDK_ROOT/$repo"
+  local is_git=0
 
   echo
   echo "==> $repo"
