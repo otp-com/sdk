@@ -27,23 +27,28 @@ SDKs take as their configuration; the URL on the wire is the same.
 | `POST /otp/verify` | Check the code the user entered. `matched: true` means correct. |
 | `POST /otp/resend` | Resend a pending OTP, advancing to the next channel (or one you name). |
 | `GET /otp/{otp_id}` | Current status: `pending`, `approved`, `failed`, or `expired`. |
+| `POST /verifications/exchange` | Exchange the `verification_token` a mobile SDK received for the recipient that was actually verified. |
 
 The code itself is never returned by the API. Errors are always
 `{"error": {"type", "message", "details"?}}`.
 
-## WhatsApp: the code comes back to the user
+## WhatsApp: how the OTP completes
 
-Verification is identical on every channel (the user enters a code, you call `/otp/verify`); only
-delivery differs. When routing picks WhatsApp, `/otp/send` (and `/otp/resend`) returns an
-`action_url` and the code is **not** sent yet:
+Every send, resend and status response carries `completion`, which tells you how this OTP finishes.
+SMS, email and Telegram always complete with `code`. Which WhatsApp mode applies is configured per
+account:
 
-1. Send the OTP. If `channel` is `whatsapp`, the response carries `action_url` (a `wa.me` link).
-2. Open `action_url` for the user. They send us the prefilled message from their own WhatsApp.
-3. We reply over WhatsApp with the code. The OTP stays `pending` until the user enters it.
-4. Call `/otp/verify` with the entered code, exactly as on SMS, email, or Telegram.
+| `completion` | `action_url` | What happens |
+| --- | --- | --- |
+| `code` | `null` | The code was delivered (any channel, or WhatsApp in template mode). The user enters it; you call `/otp/verify`. |
+| `code` | set | WhatsApp code-back. The user opens the `wa.me` link and sends us the prefilled message; we reply with the code. Then `/otp/verify` as on SMS. |
+| `inbound` | set | WhatsApp inbound approval. The prefilled message itself approves the OTP; there is no code. Poll `GET /otp/{otp_id}` every 3 to 5 seconds until `status` leaves `pending`, or take the `otp.approved` webhook. |
 
-`action_url` is `null` on every other channel. If the user has no WhatsApp, `/otp/resend` moves the
-OTP onto the next configured channel.
+Calling `/otp/verify` on an `inbound` OTP never matches while it is pending and spends an attempt;
+once approved it simply reports the approved OTP. Sandbox OTPs always complete with `code`; on
+WhatsApp they still return a sample `action_url`. If the user has no WhatsApp, `/otp/resend` moves
+the OTP onto the next configured channel: leaving WhatsApp for a code channel sets `completion`
+back to `code`.
 
 ## Updating the spec
 
